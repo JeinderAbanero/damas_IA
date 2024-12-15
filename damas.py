@@ -23,7 +23,32 @@ def color_to_name(color):
             return 'ROJO'
         elif color == BLANCO:
             return 'BLANCO'
-        return 'Desconocido'   
+        return 'Desconocido'
+
+import pygame
+
+def dividir_texto(text, font, max_width):
+    words = text.split(' ')
+    lines = []
+    current_line = []
+    current_width = 0
+
+    for word in words:
+        word_surface = font.render(word, True, (255, 0, 0))
+        word_width = word_surface.get_width()
+        if current_width + word_width > max_width:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+            current_width = word_width
+        else:
+            current_line.append(word)
+            current_width += word_width + font.render(' ', True, (255, 0, 0)).get_width()
+    
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    return lines
+   
 
 # Clases Piezas, Tablero, Juego
 
@@ -231,6 +256,7 @@ class Juego:
         self.turn = BLANCO
         self.movimientos_validos = {}
         self.game_over = False  # Variable para controlar si el juego ha terminado
+        self.movimientos_sin_captura = 0 # Contador de movimientos sin capturas
 
     def update(self):
         self.tablero.draw(self.win)
@@ -239,6 +265,7 @@ class Juego:
 
         if not self.game_over:
             self.check_ganador()
+
 
 
 
@@ -282,7 +309,7 @@ class Juego:
                 self.check_ganador()
             return True
         return False
-
+    
     def _move(self, fil, col):
         pieza = self.tablero.get_pieza(fil, col)
 
@@ -292,10 +319,14 @@ class Juego:
             skipped = self.movimientos_validos[(fil, col)]
             if skipped:
                 self.tablero.eliminar(skipped)
+                self.movimientos_sin_captura = 0  # Restablecer el contador al capturar una pieza
+            else:
+                self.movimientos_sin_captura += 1  # Incrementar el contador si no hay captura
             self.change_turn()
         else:
             return False
         return True
+
 
     def draw_movimientos_validos(self, movimientos):
         for move in movimientos:
@@ -329,6 +360,11 @@ class Juego:
             message = f"El jugador {color_to_name(self.turn)} está bloqueado. El jugador {color_to_name(self.opposite_turn(self.turn))} gana."
             self.game_over = True
             self.show_game_over_message(message)
+        elif self.movimientos_sin_captura >= 10:
+            message = "Empate: Se alcanzaron 64 movimientos sin capturas."
+            self.game_over = True
+            self.show_game_over_message(message)
+
 
     def ai_move(self):
         if self.game_over:
@@ -382,11 +418,11 @@ class Juego:
 
     def show_game_over_message(self, message):
         font = pygame.font.Font(None, 36)
+        max_width = self.win.get_width() - 20  # Espacio máximo permitido para el texto
 
-        # Dividir el mensaje en líneas si es demasiado largo
-        lines = message.split('. ')
+        lines = dividir_texto(message, font, max_width)
         rendered_lines = [font.render(line, True, (255, 0, 0)) for line in lines]
-        
+
         # Calcula la altura total del texto
         total_height = sum(line.get_height() for line in rendered_lines)
         current_y = (self.win.get_height() - total_height) // 2  # Empieza desde el centro vertical
@@ -401,6 +437,8 @@ class Juego:
         pygame.time.wait(3000)
         pygame.quit()
         exit()
+
+
 
 
 
