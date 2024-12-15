@@ -2,6 +2,8 @@ import pygame
 import random
 from copy import deepcopy
 
+
+pygame.init()
 # Constantes
 ANCHO, ALTURA = 600, 600
 FILAS, COLUMNAS = 4, 4 
@@ -15,6 +17,13 @@ GRIS = (128, 128, 128)
 AZUL = (59, 131, 189)
 
 CORONA = pygame.transform.scale(pygame.image.load("corona.png"), (45, 25))
+
+def color_to_name(color):
+        if color == ROJO:
+            return 'ROJO'
+        elif color == BLANCO:
+            return 'BLANCO'
+        return 'Desconocido'   
 
 # Clases Piezas, Tablero, Juego
 
@@ -53,7 +62,6 @@ class Piezas:
     def __repr__(self):
         return str(self.color)
 
-
 class Tablero:
     def __init__(self):
         self.tablero = []
@@ -61,43 +69,28 @@ class Tablero:
         self.ROJO_kings = self.BLANCO_kings = 0
         self.crear_tablero()
 
-    def draw_cuadrados(self, win):  # ORDEN: rojo, blanco, rojo, blanco, rojo...
+    def draw_cuadrados(self, win):
         win.fill(NEGRO)
         for fil in range(FILAS):
             for col in range(fil % 2, COLUMNAS, 2):
                 pygame.draw.rect(win, ROJO, (fil * TAM_CASILLA, col * TAM_CASILLA, TAM_CASILLA, TAM_CASILLA))
 
     def move(self, pieza, fil, col):
-        print(f"Antes del movimiento: pieza en ({pieza.fil}, {pieza.col}), moviéndose a ({fil}, {col})")
-        print(f"Estado antes de mover: ROJO_kings={self.ROJO_kings}, BLANCO_kings={self.BLANCO_kings}")
-
-        # Intercambio de posiciones
         self.tablero[pieza.fil][pieza.col], self.tablero[fil][col] = self.tablero[fil][col], self.tablero[pieza.fil][pieza.col]
-        
-        # Actualizamos la posición de la pieza
         pieza.move(fil, col)
-
-        print(f"Después del movimiento: pieza en ({pieza.fil}, {pieza.col}), moviéndose a ({fil}, {col})")
-        print(f"Estado después de mover: ROJO_kings={self.ROJO_kings}, BLANCO_kings={self.BLANCO_kings}")
-        
-        # Verificación para convertir en reina
-        if (fil == FILAS - 1 or fil == 0) and not pieza.king:  # Asegurarse de que no sea ya reina
-            print(f"Pieza ({pieza.fil}, {pieza.col}) alcanzó la última fila y se convierte en reina")
-            pieza.make_king()  # Convertir a reina
-
-            if pieza.color == BLANCO: 
+        if (fil == FILAS - 1 or fil == 0) and not pieza.king:
+            pieza.make_king()
+            if pieza.color == BLANCO:
                 self.BLANCO_kings += 1
-                print(f"Pieza blanca convertida a reina: BLANCO_kings={self.BLANCO_kings}")
             else:
                 self.ROJO_kings += 1
-                print(f"Pieza roja convertida a reina: ROJO_kings={self.ROJO_kings}")
 
     def get_pieza(self, fil, col):
         return self.tablero[fil][col]
 
-    def crear_tablero(self): 
+    def crear_tablero(self):
         for fil in range(FILAS):
-            self.tablero.append([]) 
+            self.tablero.append([])
             for col in range(COLUMNAS):
                 if col % 2 == ((fil + 1) % 2):
                     if fil < 1:
@@ -146,8 +139,6 @@ class Tablero:
             movimientos.update(self.atravezar_izq(fil + 1, min(fil + 3, FILAS), 1, pieza.color, izq))
             movimientos.update(self.atravezar_der(fil + 1, min(fil + 3, FILAS), 1, pieza.color, der))
 
-        if not movimientos:
-            print(f"¡No hay movimientos válidos para la pieza {pieza.color} en ({pieza.fil}, {pieza.col})!")
         return movimientos
 
     def atravezar_izq(self, start, stop, step, color, izq, skipped=[]):
@@ -161,7 +152,7 @@ class Tablero:
                 if skipped and not last:
                     break
                 elif skipped:
-                    movimientos[(f, izq)] = last + skipped  # Situación de salto
+                    movimientos[(f, izq)] = last + skipped
                 else:
                     movimientos[(f, izq)] = last
                 if last:
@@ -196,7 +187,7 @@ class Tablero:
                 if skipped and not last:
                     break
                 elif skipped:
-                    movimientos[(f, der)] = last + skipped  # Situación de salto
+                    movimientos[(f, der)] = last + skipped
                 else:
                     movimientos[(f, der)] = last
                 if last:
@@ -229,9 +220,6 @@ class Tablero:
                         return False
         return True
 
-
-import copy
-
 class Juego:
     def __init__(self, win):
         self.win = win
@@ -242,11 +230,17 @@ class Juego:
         self.tablero = Tablero()
         self.turn = BLANCO
         self.movimientos_validos = {}
+        self.game_over = False  # Variable para controlar si el juego ha terminado
 
     def update(self):
         self.tablero.draw(self.win)
         self.draw_movimientos_validos(self.movimientos_validos)
         pygame.display.update()
+
+        if not self.game_over:
+            self.check_ganador()
+
+
 
     def ganador(self):
         return self.tablero.ganador()
@@ -255,8 +249,17 @@ class Juego:
         self._init()
 
     def select(self, fil, col):
+        if self.game_over:
+            return
+
         if self.check_blocked(self.turn):
-            print(f"El jugador {self.turn} está bloqueado. El juego ha terminado.")
+            
+            if self.turn == BLANCO:
+                jugador = 'BLANCO'
+            elif self.turn == ROJO:
+                jugador = 'ROJO'
+            print(f"El jugador {jugador} está bloqueado. El juego ha terminado.")
+            self.game_over = True
             self.check_ganador()
             return
 
@@ -272,16 +275,17 @@ class Juego:
             self.selected = pieza
             self.movimientos_validos = self.tablero.get_movimientos_validos(pieza)
             print(f"Movimientos válidos: {self.movimientos_validos}")
-            
+
             if not self.movimientos_validos:
                 print(f"El jugador {self.turn} está bloqueado.")
+                self.game_over = True
                 self.check_ganador()
             return True
         return False
 
     def _move(self, fil, col):
         pieza = self.tablero.get_pieza(fil, col)
-        
+
         if self.selected and pieza == 0 and (fil, col) in self.movimientos_validos:
             print(f"Pieza movida: {self.selected.color} desde ({self.selected.fil}, {self.selected.col}) a ({fil}, {col})")
             self.tablero.move(self.selected, fil, col)
@@ -297,7 +301,7 @@ class Juego:
         for move in movimientos:
             fil, col = move
             pygame.draw.circle(self.win, AZUL, (col * TAM_CASILLA + TAM_CASILLA // 2, fil * TAM_CASILLA + TAM_CASILLA // 2), 15)
-    
+
     def change_turn(self):
         self.turn = BLANCO if self.turn == ROJO else ROJO
         self.movimientos_validos = {}
@@ -311,16 +315,25 @@ class Juego:
                     if movimientos:
                         return False
         return True
+    
+    def opposite_turn(self, turn):
+        return ROJO if turn == BLANCO else BLANCO   
 
     def check_ganador(self):
         ganador = self.tablero.ganador()
         if ganador:
-            print(f"El ganador es el jugador {ganador}")
-            pygame.quit()
-            exit()
+            message = f"El ganador es el jugador {ganador}"
+            self.game_over = True
+            self.show_game_over_message(message)
+        elif self.check_blocked(self.turn):
+            message = f"El jugador {color_to_name(self.turn)} está bloqueado. El jugador {color_to_name(self.opposite_turn(self.turn))} gana."
+            self.game_over = True
+            self.show_game_over_message(message)
 
     def ai_move(self):
-        """Función de IA que selecciona un movimiento utilizando Minimax"""
+        if self.game_over:
+            return
+
         best_move = None
         best_score = -float('inf')
 
@@ -329,16 +342,17 @@ class Juego:
                 pieza = self.tablero.get_pieza(fil, col)
                 if pieza != 0 and pieza.color == BLANCO:
                     movimientos = self.tablero.get_movimientos_validos(pieza)
-                    for move, skipped in movimientos.items():
-                        new_tablero = copy.deepcopy(self.tablero)
-                        new_pieza = new_tablero.get_pieza(pieza.fil, pieza.col)
-                        new_tablero.move(new_pieza, move[0], move[1])
-                        if skipped:
-                            new_tablero.eliminar(skipped)
-                        score = self.evaluate_board(new_tablero)
-                        if score > best_score:
-                            best_score = score
-                            best_move = (pieza, move[0], move[1], skipped)
+                    if movimientos:
+                        for move, skipped in movimientos.items():
+                            new_tablero = deepcopy(self.tablero)
+                            new_pieza = new_tablero.get_pieza(pieza.fil, pieza.col)
+                            new_tablero.move(new_pieza, move[0], move[1])
+                            if skipped:
+                                new_tablero.eliminar(skipped)
+                            score = self.evaluate_board(new_tablero)
+                            if score > best_score:
+                                best_score = score
+                                best_move = (pieza, move[0], move[1], skipped)
 
         if best_move:
             pieza, fil, col, skipped = best_move
@@ -347,8 +361,14 @@ class Juego:
                 self.tablero.eliminar(skipped)
             self.change_turn()
 
+            # Actualiza la pantalla para mostrar el último movimiento
+            self.update()
+
+            # Verificar si el juego ha terminado después de actualizar la pantalla
+            self.check_ganador()
+
+
     def evaluate_board(self, tablero):
-        """Evalúa el tablero para la IA"""
         score = 0
         for fil in range(FILAS):
             for col in range(COLUMNAS):
@@ -359,6 +379,32 @@ class Juego:
                     else:
                         score -= 1
         return score
+
+    def show_game_over_message(self, message):
+        font = pygame.font.Font(None, 36)
+
+        # Dividir el mensaje en líneas si es demasiado largo
+        lines = message.split('. ')
+        rendered_lines = [font.render(line, True, (255, 0, 0)) for line in lines]
+        
+        # Calcula la altura total del texto
+        total_height = sum(line.get_height() for line in rendered_lines)
+        current_y = (self.win.get_height() - total_height) // 2  # Empieza desde el centro vertical
+
+        # Renderizar cada línea y centrarla horizontalmente
+        for line in rendered_lines:
+            text_rect = line.get_rect(center=(self.win.get_width() // 2, current_y))
+            self.win.blit(line, text_rect)
+            current_y += line.get_height()  # Avanza a la siguiente línea
+
+        pygame.display.update()
+        pygame.time.wait(3000)
+        pygame.quit()
+        exit()
+
+
+
+
 
 # MAIN
 
