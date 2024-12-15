@@ -208,7 +208,7 @@ class Juego:
     def _init(self):
         self.selected = None
         self.tablero = Tablero()
-        self.turn = ROJO
+        self.turn = BLANCO
         self.movimientos_validos = {}
     def ganador(self):
         return self. tablero.ganador()
@@ -216,28 +216,41 @@ class Juego:
         self ._init()
     def select(self, fil, col):
         if self.selected:
-            result = self ._move(fil, col) #Se mueve lo seleccionado.
+            result = self._move(fil, col)  # Se mueve lo seleccionado.
             if not result:
-                self. selected = None
+                self.selected = None
                 self.select(fil, col)
         pieza = self.tablero.get_pieza(fil, col)
+        print(f"Seleccionada: {pieza}")  # Depuración
         if pieza != 0 and pieza.color == self.turn:
             self.selected = pieza
             self.movimientos_validos = self.tablero.get_movimientos_validos(pieza)
+            print(f"Movimientos válidos: {self.movimientos_validos}")  # Depuración
             return True
         return False
+
     
     def _move(self, fil, col):
         pieza = self.tablero.get_pieza(fil, col)
+        
         if self.selected and pieza == 0 and (fil, col) in self.movimientos_validos:
+            # Mostrar el movimiento de la pieza (origen -> destino)
+            print(f"Pieza movida: {self.selected.color} desde ({self.selected.fil}, {self.selected.col}) a ({fil}, {col})")
+            
+            # Mover la pieza
             self.tablero.move(self.selected, fil, col)
+            
             skipped = self.movimientos_validos[(fil, col)]
             if skipped:
                 self.tablero.eliminar(skipped)
+            
+            # Cambiar de turno
             self.change_turn()
         else:
             return False
         return True
+
+
     
     def draw_movimientos_validos(self, movimientos):
         for move in movimientos:
