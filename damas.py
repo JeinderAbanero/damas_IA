@@ -1,5 +1,6 @@
 import pygame
 import random
+import time
 from copy import deepcopy
 
 
@@ -68,6 +69,7 @@ def evaluate_board(tablero):
     return score
 
 def minimax(tablero, profundidad, maximizando_jugador):
+    print(f"Minimax llamado con profundidad {profundidad} y maximizando_jugador {maximizando_jugador}")
     if profundidad == 0 or tablero.ganador() is not None:
         return evaluate_board(tablero)
     
@@ -85,6 +87,7 @@ def minimax(tablero, profundidad, maximizando_jugador):
         return min_eval
 
 
+
 def obtener_movimientos_posibles(tablero, color):
     movimientos = []
     for fil in range(FILAS):
@@ -94,11 +97,13 @@ def obtener_movimientos_posibles(tablero, color):
                 movimientos_validos = tablero.get_movimientos_validos(pieza)
                 for move, skipped in movimientos_validos.items():
                     new_tablero = deepcopy(tablero)
-                    new_tablero.move(new_tablero.get_pieza(pieza.fil, pieza.col), move[0], move[1])
+                    new_pieza = new_tablero.get_pieza(pieza.fil, pieza.col)
+                    new_tablero.move(new_pieza, move[0], move[1])
                     if skipped:
                         new_tablero.eliminar(skipped)
                     movimientos.append(new_tablero)
     return movimientos
+
 
 
 # Clases Piezas, Tablero, Juego
@@ -198,9 +203,9 @@ class Tablero:
 
     def ganador(self):
         if self.ROJO_left <= 0:
-            return 'BLANCO'
+            return BLANCO
         elif self.BLANCO_left <= 0:
-            return 'ROJO'
+            return ROJO
         return None
     
     def get_movimientos_validos(self, pieza):
@@ -315,26 +320,50 @@ class Tablero:
                         return False
         return True
 
+
+
 class Juego:
     def __init__(self, win):
         self.win = win
         self._init()
+        self.start_time = time.time()
+        self.profundidad_minimax = random.randint(1, 3)
 
     def _init(self):
         self.selected = None
         self.tablero = Tablero()
         self.turn = BLANCO
         self.movimientos_validos = {}
-        self.game_over = False  # Variable para controlar si el juego ha terminado
-        self.movimientos_sin_captura = 0 # Contador de movimientos sin capturas
+        self.game_over = False
+        self.movimientos_sin_captura = 0
+        self.movimientos_totales = 0
+
+        # Ajustar los contadores de piezas para un tablero 4x4
+        self.piezas_iniciales_rojas = 2
+        self.piezas_iniciales_blancas = 2
 
     def update(self):
         self.tablero.draw(self.win)
         self.draw_movimientos_validos(self.movimientos_validos)
+        self.draw_indicators()  # Dibujar indicadores en tiempo real
         pygame.display.update()
 
         if not self.game_over:
             self.check_ganador()
+
+    def draw_indicators(self):
+        font = pygame.font.Font(None, 20)
+        turn_text = font.render(f"Turno: {'IA' if self.turn == BLANCO else 'Humano'}", True, (0, 0, 0))
+        moves_text = font.render(f"Mov. Totales: {self.movimientos_totales}", True, (0, 0, 0))
+        deep_text = font.render(f"Profundidad: {self.profundidad_minimax}", True, (0, 0, 0))
+
+        if self.movimientos_sin_captura >= 1:
+            moves_cap = font.render(f"Mov. sin captura: {self.movimientos_sin_captura}", True, (0, 0, 0))
+            self.win.blit(moves_cap, (10, 55))
+        
+        self.win.blit(turn_text, (10, 10))
+        self.win.blit(moves_text, (10, 25))
+        self.win.blit(deep_text, (10, 40))
 
     def ganador(self):
         return self.tablero.ganador()
@@ -346,23 +375,25 @@ class Juego:
         if self.game_over:
             return
 
+        # Comprobar si el turno actual está bloqueado
         if self.check_blocked(self.turn):
-            
-            if self.turn == BLANCO:
-                jugador = 'BLANCO'
-            elif self.turn == ROJO:
-                jugador = 'ROJO'
+            jugador = 'BLANCO' if self.turn == BLANCO else 'ROJO'
             print(f"El jugador {jugador} está bloqueado. El juego ha terminado.")
             self.game_over = True
             self.check_ganador()
             return
 
+        # Mover pieza seleccionada si se selecciona otra celda
         if self.selected:
             result = self._move(fil, col)
-            if not result:
+            if result:
+                self.selected = None
+            else:
                 self.selected = None
                 self.select(fil, col)
+                return
 
+        # Seleccionar nueva pieza
         pieza = self.tablero.get_pieza(fil, col)
         print(f"Seleccionada: {pieza} en ({fil}, {col})")
         if pieza != 0 and pieza.color == self.turn:
@@ -370,31 +401,31 @@ class Juego:
             self.movimientos_validos = self.tablero.get_movimientos_validos(pieza)
             print(f"Movimientos válidos: {self.movimientos_validos}")
 
+            # Si la pieza seleccionada está bloqueada, permitir seleccionar otra
             if not self.movimientos_validos:
-                print(f"El jugador {self.turn} está bloqueado.")
-                self.game_over = True
-                self.check_ganador()
+                print(f"La pieza seleccionada {pieza} en ({fil}, {col}) está bloqueada. Selecciona otra pieza.")
+                self.selected = None
+                self.movimientos_validos = {}
             return True
         return False
+
     
     def _move(self, fil, col):
         pieza = self.tablero.get_pieza(fil, col)
-
         if self.selected and pieza == 0 and (fil, col) in self.movimientos_validos:
-            print(f"Pieza movida: {self.selected.color} desde ({self.selected.fil}, {self.selected.col}) a ({fil, col})")
+            #print(f"Pieza movida: {self.selected.color} desde ({self.selected.fil}, {self.selected.col}) a ({fil, col})")
             self.tablero.move(self.selected, fil, col)
             skipped = self.movimientos_validos[(fil, col)]
             if skipped:
                 for skip in skipped:
-                    if self.tablero.get_pieza(skip[0], skip[1]).color != self.selected.color:
-                        self.tablero.eliminar([skip])  # Pasar como lista de una tupla
-                self.movimientos_sin_captura = 0  # Restablecer el contador al capturar una pieza
+                    if self.tablero.get_pieza(skip[0], skip[1]) != 0:
+                        self.tablero.eliminar([skip])
+                self.movimientos_sin_captura = 0
             else:
-                self.movimientos_sin_captura += 1  # Incrementar el contador si no hay captura
+                self.movimientos_sin_captura += 1
 
-            # Convertir en dama si llega al otro extremo del tablero
-            if fil == 0 and self.selected.color == ROJO or fil == FILAS - 1 and self.selected.color == BLANCO:
-                self.selected.make_king()  # Utilizar el método make_king
+            if (fil == 0 and self.selected.color == ROJO) or (fil == FILAS - 1 and self.selected.color == BLANCO):
+                self.selected.make_king()
 
             self.change_turn()
         else:
@@ -409,6 +440,7 @@ class Juego:
     def change_turn(self):
         self.turn = BLANCO if self.turn == ROJO else ROJO
         self.movimientos_validos = {}
+        self.movimientos_totales += 1  # Incrementar los movimientos totales aquí
 
     def check_blocked(self, turn):
         for fila in range(FILAS):
@@ -419,50 +451,78 @@ class Juego:
                     if movimientos:
                         return False
         return True
+
     
     def opposite_turn(self, turn):
         return ROJO if turn == BLANCO else BLANCO   
 
     def check_ganador(self):
         ganador = self.tablero.ganador()
-        if ganador:
-            message = f"El ganador es el jugador {ganador}"
-            self.game_over = True
-            self.show_game_over_message(message)
+        #print(f"Variable Ganador: {ganador}")
+        message = None  # Asegurarnos de que la variable se inicializa
+
+        if ganador is not None:
+            if ganador == BLANCO:
+                message = "Has sido vencido por la IA."
+            elif ganador == ROJO:
+                message = "¡Felicidades! Has vencido a la IA."
+            #print(f"Ganador detectado: {message}")
         elif self.check_blocked(self.turn):
-            message = f"El jugador {color_to_name(self.turn)} está bloqueado. El jugador {color_to_name(self.opposite_turn(self.turn))} gana."
-            self.game_over = True
-            self.show_game_over_message(message)
+            if self.turn == BLANCO:
+                message = "El jugador BLANCO está bloqueado. ¡Felicidades! Has vencido a la IA."
+            else:
+                message = "El jugador ROJO está bloqueado. Has sido vencido por la IA."
+            #print(f"Turno bloqueado: {message}")
         elif self.movimientos_sin_captura >= 64:
             message = "Empate: Se alcanzaron 64 movimientos sin capturas."
-            self.game_over = True
-            self.show_game_over_message(message)
+            #print(f"Empate detectado: {message}")
 
+        if message:
+            self.game_over = True
+            #print("Mostrando mensaje: " + message)  # Añadir impresión para verificar
+            self.show_game_over_message(message)
+        #else:
+            #print("No se detectó un ganador.")
+            
     def ai_move(self):
         if self.game_over:
             return
+        
+        self.update()
+        pygame.time.wait(500)  # Añadir un retardo de 1000 ms (1 segundo)
 
         mejor_movimiento = None
         mejor_puntuacion = float('-inf')
         for movimiento in obtener_movimientos_posibles(self.tablero, BLANCO):
-            puntuacion = minimax(movimiento, 3, False)  # Profundidad de 3 niveles
+            puntuacion = minimax(movimiento, self.profundidad_minimax, False)
             if puntuacion > mejor_puntuacion:
                 mejor_puntuacion = puntuacion
                 mejor_movimiento = movimiento
 
         if mejor_movimiento:
-            # Aplicar el mejor movimiento al tablero actual
             self.tablero = mejor_movimiento
             self.change_turn()
-
-            # Actualiza la pantalla para mostrar el último movimiento
             self.update()
-
-            # Verificar si el juego ha terminado después de actualizar la pantalla
             self.check_ganador()
 
 
+    def mostrar_estadisticas(self):
+        end_time = time.time()
+        tiempo_total = end_time - self.start_time
+
+        # Calcular capturas basadas en piezas iniciales y piezas restantes
+        capturas_blancas = self.piezas_iniciales_rojas - self.tablero.ROJO_left
+        capturas_rojas = self.piezas_iniciales_blancas - self.tablero.BLANCO_left
+
+        print(f"Partida terminada. Ganador: {self.tablero.ganador()}")
+        print(f"Movimientos totales: {self.movimientos_totales}")
+        print(f"Capturas blancas: {capturas_blancas}")
+        print(f"Capturas rojas: {capturas_rojas}")
+        print(f"Profundidad de Minimax: {self.profundidad_minimax}")
+        print(f"Tiempo total de juego: {tiempo_total:.2f} segundos")
+
     def show_game_over_message(self, message):
+        print(f"show_game_over_message llamada con mensaje: {message}")  # Impresión para verificar
         font = pygame.font.Font(None, 36)
         max_width = self.win.get_width() - 20  # Espacio máximo permitido para el texto
 
@@ -475,7 +535,7 @@ class Juego:
 
         # Dibujar el rectángulo de fondo
         background_rect = pygame.Rect(10, current_y - 30, max_width, total_height + 35)
-        pygame.draw.rect(self.win, GRIS, background_rect)  # Fondo blanco
+        pygame.draw.rect(self.win, GRIS, background_rect)  # Fondo gris
 
         # Renderizar cada línea y centrarla horizontalmente
         for line in rendered_lines:
@@ -484,8 +544,15 @@ class Juego:
             current_y += line.get_height()  # Avanza a la siguiente línea
 
         pygame.display.update()
-        pygame.time.wait(3000)
+
+        #print("Mensaje de fin de juego mostrado en pantalla.")  # Impresión para verificar
+
+        # Mantener el mensaje visible por más tiempo antes de salir
+        pygame.time.wait(3000)  # Esperar 3 segundos para permitir leer el mensaje
+        self.mostrar_estadisticas()  # Llamar a mostrar_estadisticas antes de salir
+        #print("Estadísticas mostradas.")  # Impresión para verificar
         pygame.quit()
+        print("Pygame cerrado.")  # Impresión para verificar
         exit()
 
 # MAIN
@@ -527,7 +594,5 @@ def main():
             game.ai_move()
 
         game.update()
-
-    pygame.quit()
 
 main()
