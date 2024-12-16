@@ -50,7 +50,56 @@ def dividir_texto(text, font, max_width):
         lines.append(' '.join(current_line))
 
     return lines
-   
+
+def evaluate_board(tablero):
+    score = 0
+    for fil in range(FILAS):
+        for col in range(COLUMNAS):
+            pieza = tablero.get_pieza(fil, col)
+            if pieza != 0:
+                if pieza.color == BLANCO:
+                    score += 1
+                    if pieza.king:
+                        score += 1.5
+                else:
+                    score -= 1
+                    if pieza.king:
+                        score -= 1.5
+    return score
+
+def minimax(tablero, profundidad, maximizando_jugador):
+    if profundidad == 0 or tablero.ganador() is not None:
+        return evaluate_board(tablero)
+    
+    if maximizando_jugador:
+        max_eval = float('-inf')
+        for movimiento in obtener_movimientos_posibles(tablero, BLANCO):
+            evaluacion = minimax(movimiento, profundidad - 1, False)
+            max_eval = max(max_eval, evaluacion)
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for movimiento in obtener_movimientos_posibles(tablero, ROJO):
+            evaluacion = minimax(movimiento, profundidad - 1, True)
+            min_eval = min(min_eval, evaluacion)
+        return min_eval
+
+
+def obtener_movimientos_posibles(tablero, color):
+    movimientos = []
+    for fil in range(FILAS):
+        for col in range(COLUMNAS):
+            pieza = tablero.get_pieza(fil, col)
+            if pieza != 0 and pieza.color == color:
+                movimientos_validos = tablero.get_movimientos_validos(pieza)
+                for move, skipped in movimientos_validos.items():
+                    new_tablero = deepcopy(tablero)
+                    new_tablero.move(new_tablero.get_pieza(pieza.fil, pieza.col), move[0], move[1])
+                    if skipped:
+                        new_tablero.eliminar(skipped)
+                    movimientos.append(new_tablero)
+    return movimientos
+
 
 # Clases Piezas, Tablero, Juego
 
@@ -147,15 +196,13 @@ class Tablero:
                     self.BLANCO_left -= 1
                 self.tablero[fil][col] = 0  # Eliminar la pieza del tablero
 
-
-
     def ganador(self):
         if self.ROJO_left <= 0:
             return 'BLANCO'
         elif self.BLANCO_left <= 0:
             return 'ROJO'
         return None
-
+    
     def get_movimientos_validos(self, pieza):
         movimientos = {}
         direcciones = []
@@ -184,6 +231,9 @@ class Tablero:
                             movimientos[(siguiente_fila, siguiente_columna)] = [(fil, col)]
 
         return movimientos
+
+
+
 
 
     def atravezar_izq(self, start, stop, step, color, izq, skipped=[]):
@@ -388,36 +438,21 @@ class Juego:
             self.game_over = True
             self.show_game_over_message(message)
 
-
     def ai_move(self):
         if self.game_over:
             return
 
-        best_move = None
-        best_score = -float('inf')
+        mejor_movimiento = None
+        mejor_puntuacion = float('-inf')
+        for movimiento in obtener_movimientos_posibles(self.tablero, BLANCO):
+            puntuacion = minimax(movimiento, 3, False)  # Profundidad de 3 niveles
+            if puntuacion > mejor_puntuacion:
+                mejor_puntuacion = puntuacion
+                mejor_movimiento = movimiento
 
-        for fil in range(FILAS):
-            for col in range(COLUMNAS):
-                pieza = self.tablero.get_pieza(fil, col)
-                if pieza != 0 and pieza.color == BLANCO:
-                    movimientos = self.tablero.get_movimientos_validos(pieza)
-                    if movimientos:
-                        for move, skipped in movimientos.items():
-                            new_tablero = deepcopy(self.tablero)
-                            new_pieza = new_tablero.get_pieza(pieza.fil, pieza.col)
-                            new_tablero.move(new_pieza, move[0], move[1])
-                            if skipped:
-                                new_tablero.eliminar(skipped)
-                            score = self.evaluate_board(new_tablero)
-                            if score > best_score:
-                                best_score = score
-                                best_move = (pieza, move[0], move[1], skipped)
-
-        if best_move:
-            pieza, fil, col, skipped = best_move
-            self.tablero.move(pieza, fil, col)
-            if skipped:
-                self.tablero.eliminar(skipped)
+        if mejor_movimiento:
+            # Aplicar el mejor movimiento al tablero actual
+            self.tablero = mejor_movimiento
             self.change_turn()
 
             # Actualiza la pantalla para mostrar el último movimiento
@@ -426,18 +461,6 @@ class Juego:
             # Verificar si el juego ha terminado después de actualizar la pantalla
             self.check_ganador()
 
-
-    def evaluate_board(self, tablero):
-        score = 0
-        for fil in range(FILAS):
-            for col in range(COLUMNAS):
-                pieza = tablero.get_pieza(fil, col)
-                if pieza != 0:
-                    if pieza.color == BLANCO:
-                        score += 1
-                    else:
-                        score -= 1
-        return score
 
     def show_game_over_message(self, message):
         font = pygame.font.Font(None, 36)
