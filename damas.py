@@ -75,14 +75,25 @@ def evaluate_board(tablero):
         for col in range(COLUMNAS):
             pieza = tablero.get_pieza(fil, col)
             if pieza != 0:
+                # Valor de la pieza
                 if pieza.color == BLANCO:
                     score += 1
                     if pieza.king:
-                        score += 1.5
+                        score += 2  # Aumentar valor de las damas
                 else:
                     score -= 1
                     if pieza.king:
-                        score -= 1.5
+                        score -= 2  # Aumentar valor de las damas
+                
+                # Valor basado en la posición
+                if pieza.color == BLANCO:
+                    score += (FILAS - fil) * 0.1  # Aumentar valor al acercarse al otro lado
+                else:
+                    score -= fil * 0.1  # Aumentar valor al acercarse al otro lado
+                
+                # Valor basado en la movilidad
+                movimientos = tablero.get_movimientos_validos(pieza)
+                score += len(movimientos) * 0.05 if pieza.color == BLANCO else -len(movimientos) * 0.05
     return score
 
 def minimax(tablero, profundidad, maximizando_jugador):

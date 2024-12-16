@@ -20,3 +20,7 @@ Puedes instalar las dependencias utilizando el archivo `requirements.txt` propor
    ```sh
    git clone https://github.com/JeinderAbanero/damas_IA.git
    ```
+
+## Ejecución
+
+El ejecutable lo puedes encontrar dentro de la carpeta dist
