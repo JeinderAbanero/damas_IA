@@ -1,3 +1,5 @@
+import os
+import sys
 import pygame
 import random
 import time
@@ -18,6 +20,21 @@ NEGRO = (20, 20, 20)
 GRIS = (128, 128, 128)
 AZUL = (59, 131, 189)
 TEXT = (0,0,0)
+
+
+# Función para obtener la ruta del archivo en el ejecutable
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+# Utilizar la función para cargar la imagen
+corona_img_path = resource_path("corona.png")
+corona_img = pygame.image.load(corona_img_path)
+
 
 CORONA = pygame.transform.scale(pygame.image.load("corona.png"), (45, 25))
 

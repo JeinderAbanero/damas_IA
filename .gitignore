@@ -1,0 +1,10 @@
+# Exclude directories
+build/
+__pycache__/
+*.spec
+
+# Exclude OS-specific files
+.DS_Store
+Thumbs.db
+
+# Include the dist folder to add the executable
