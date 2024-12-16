@@ -531,34 +531,74 @@ class Juego:
     def show_game_over_message(self, message, resultado):
         #print(f"show_game_over_message llamada con mensaje: {message}")  # Impresión para verificar
         font = pygame.font.Font(None, 36)
+        small_font = pygame.font.Font(None, 24)
         max_width = self.win.get_width() - 20  # Espacio máximo permitido para el texto
 
-        lines = dividir_texto(message, font, max_width)
-        rendered_lines = [font.render(line, True, (0, 0, 0)) for line in lines]
+        # Dibujar el mensaje del estado de la partida
+        lines_message = dividir_texto(message, font, max_width)
+        rendered_lines_message = [font.render(line, True, (255, 255, 255)) for line in lines_message]
 
-        # Calcula la altura total del texto
-        total_height = sum(line.get_height() for line in rendered_lines)
-        current_y = (self.win.get_height() - total_height) // 2  # Empieza desde el centro vertical
+        # Calcula la altura total del mensaje
+        total_height_message = sum(line.get_height() for line in rendered_lines_message)
+        current_y_message = (self.win.get_height() - total_height_message) // 2 - 50  # Ajustar la posición vertical
 
-        # Dibujar el rectángulo de fondo
-        background_rect = pygame.Rect(10, current_y - 30, max_width, total_height + 35)
-        pygame.draw.rect(self.win, GRIS, background_rect)  # Fondo gris
+        # Dibujar el rectángulo de fondo para el mensaje
+        background_rect_message = pygame.Rect(10, current_y_message - 35, max_width, total_height_message + 40)
+        pygame.draw.rect(self.win, (120, 120, 120), background_rect_message)  # Fondo verde
 
-        # Renderizar cada línea y centrarla horizontalmente
-        for line in rendered_lines:
-            text_rect = line.get_rect(center=(self.win.get_width() // 2, current_y))
+        # Renderizar cada línea y centrarla horizontalmente para el mensaje
+        for line in rendered_lines_message:
+            text_rect = line.get_rect(center=(self.win.get_width() // 2, current_y_message))
             self.win.blit(line, text_rect)
-            current_y += line.get_height()  # Avanza a la siguiente línea
+            current_y_message += line.get_height()  # Avanza a la siguiente línea
 
         pygame.display.update()
 
-        # Mantener el mensaje visible por más tiempo antes de salir
-        pygame.time.wait(3000)  # Esperar 3 segundos para permitir leer el mensaje
-        self.mostrar_estadisticas(resultado)  # Pasar el resultado al método mostrar_estadisticas
-        pygame.quit()
-        #print("Pygame cerrado.")  # Impresión para verificar
-        exit()
+        # Mantener el mensaje visible por un tiempo antes de mostrar las estadísticas
+        pygame.time.wait(1000)  # Esperar 2 segundos para permitir leer el mensaje
 
+        # Generar las estadísticas
+        end_time = time.time()
+        tiempo_total = end_time - self.start_time
+
+        capturas_blancas = self.piezas_iniciales_rojas - self.tablero.ROJO_left
+        capturas_rojas = self.piezas_iniciales_blancas - self.tablero.BLANCO_left
+
+        estadisticas = [
+            f"Partida terminada. {resultado}",
+            f"Movimientos totales: {self.movimientos_totales}",
+            f"Fichas capturadas por las blancas: {capturas_blancas}",
+            f"Fichas capturadas por las rojas: {capturas_rojas}",
+            f"Profundidad de Minimax: {self.profundidad_minimax}",
+            f"Tiempo total de juego: {tiempo_total:.2f} segundos"
+        ]
+
+        lines_stats = [small_font.render(stat, True, (255, 255, 255)) for stat in estadisticas]
+
+        # Calcula la altura total de las estadísticas
+        total_height_stats = sum(line.get_height() for line in lines_stats)
+        current_y_stats = current_y_message + total_height_message + 50  # Ajustar la posición vertical
+
+        # Dibujar el rectángulo de fondo para las estadísticas
+        background_rect_stats = pygame.Rect(10, current_y_stats - 20, max_width, total_height_stats + 20)
+        pygame.draw.rect(self.win, (128, 128, 128), background_rect_stats)
+
+        # Renderizar cada línea y centrarla horizontalmente para las estadísticas
+        for line in lines_stats:
+            text_rect = line.get_rect(center=(self.win.get_width() // 2, current_y_stats))
+            self.win.blit(line, text_rect)
+            current_y_stats += line.get_height()  # Avanza a la siguiente línea
+
+        pygame.display.update()
+
+        # Mantener las estadísticas visibles por más tiempo antes de salir
+        pygame.time.wait(6500)  # Esperar 5 segundos para permitir leer las estadísticas
+        pygame.quit()
+        print("Pygame cerrado.")  # Impresión para verificar
+
+        # Mostrar estadísticas en la consola
+        self.mostrar_estadisticas(resultado)
+        exit()
 
 # MAIN
 
