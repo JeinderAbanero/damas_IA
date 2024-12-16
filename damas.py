@@ -11,10 +11,12 @@ TAM_CASILLA = ANCHO // COLUMNAS
 
 # Colores 
 ROJO = (255, 105, 97)
-BLANCO = (224, 176, 255)
+ROJO_TAB = (255, 0, 0)
+BLANCO = (255, 255, 255)
 NEGRO = (20, 20, 20)
 GRIS = (128, 128, 128)
 AZUL = (59, 131, 189)
+TEXT = (0,0,0)
 
 CORONA = pygame.transform.scale(pygame.image.load("corona.png"), (45, 25))
 
@@ -98,7 +100,7 @@ class Tablero:
         win.fill(NEGRO)
         for fil in range(FILAS):
             for col in range(fil % 2, COLUMNAS, 2):
-                pygame.draw.rect(win, ROJO, (fil * TAM_CASILLA, col * TAM_CASILLA, TAM_CASILLA, TAM_CASILLA))
+                pygame.draw.rect(win, ROJO_TAB, (fil * TAM_CASILLA, col * TAM_CASILLA, TAM_CASILLA, TAM_CASILLA))
 
     def move(self, pieza, fil, col):
         self.tablero[pieza.fil][pieza.col], self.tablero[fil][col] = self.tablero[fil][col], self.tablero[pieza.fil][pieza.col]
@@ -137,12 +139,15 @@ class Tablero:
 
     def eliminar(self, piezas):
         for pieza in piezas:
-            self.tablero[pieza.fil][pieza.col] = 0
-            if pieza != 0:
-                if pieza.color == ROJO:
+            fil, col = pieza
+            if self.tablero[fil][col] != 0:
+                if self.tablero[fil][col].color == ROJO:
                     self.ROJO_left -= 1
-                else:
+                elif self.tablero[fil][col].color == BLANCO:
                     self.BLANCO_left -= 1
+                self.tablero[fil][col] = 0  # Eliminar la pieza del tablero
+
+
 
     def ganador(self):
         if self.ROJO_left <= 0:
@@ -153,18 +158,33 @@ class Tablero:
 
     def get_movimientos_validos(self, pieza):
         movimientos = {}
-        izq = pieza.col - 1
-        der = pieza.col + 1
-        fil = pieza.fil
+        direcciones = []
 
-        if pieza.color == ROJO or pieza.king:
-            movimientos.update(self.atravezar_izq(fil - 1, max(fil - 3, -1), -1, pieza.color, izq))
-            movimientos.update(self.atravezar_der(fil - 1, max(fil - 3, -1), -1, pieza.color, der))
-        if pieza.color == BLANCO or pieza.king:
-            movimientos.update(self.atravezar_izq(fil + 1, min(fil + 3, FILAS), 1, pieza.color, izq))
-            movimientos.update(self.atravezar_der(fil + 1, min(fil + 3, FILAS), 1, pieza.color, der))
+        if pieza.king:
+            direcciones = [
+                (-1, -1), (-1, 1), # Movimientos diagonales hacia arriba
+                (1, -1), (1, 1)    # Movimientos diagonales hacia abajo
+            ]
+        else:
+            if pieza.color == ROJO:
+                direcciones = [(-1, -1), (-1, 1)]  # Movimientos diagonales hacia arriba
+            else:  # BLANCO
+                direcciones = [(1, -1), (1, 1)]   # Movimientos diagonales hacia abajo
+
+        for dir in direcciones:
+            fil, col = pieza.fil + dir[0], pieza.col + dir[1]
+            if 0 <= fil < FILAS and 0 <= col < COLUMNAS:
+                siguiente_fila, siguiente_columna = fil + dir[0], col + dir[1]
+                if self.tablero[fil][col] == 0:  # Posición vacía
+                    movimientos[(fil, col)] = []
+                elif self.tablero[fil][col].color != pieza.color:
+                    # Verificar que la pieza a capturar es del color opuesto
+                    if 0 <= siguiente_fila < FILAS and 0 <= siguiente_columna < COLUMNAS:
+                        if self.tablero[siguiente_fila][siguiente_columna] == 0:
+                            movimientos[(siguiente_fila, siguiente_columna)] = [(fil, col)]
 
         return movimientos
+
 
     def atravezar_izq(self, start, stop, step, color, izq, skipped=[]):
         movimientos = {}
@@ -266,9 +286,6 @@ class Juego:
         if not self.game_over:
             self.check_ganador()
 
-
-
-
     def ganador(self):
         return self.tablero.ganador()
 
@@ -314,19 +331,25 @@ class Juego:
         pieza = self.tablero.get_pieza(fil, col)
 
         if self.selected and pieza == 0 and (fil, col) in self.movimientos_validos:
-            print(f"Pieza movida: {self.selected.color} desde ({self.selected.fil}, {self.selected.col}) a ({fil}, {col})")
+            print(f"Pieza movida: {self.selected.color} desde ({self.selected.fil}, {self.selected.col}) a ({fil, col})")
             self.tablero.move(self.selected, fil, col)
             skipped = self.movimientos_validos[(fil, col)]
             if skipped:
-                self.tablero.eliminar(skipped)
+                for skip in skipped:
+                    if self.tablero.get_pieza(skip[0], skip[1]).color != self.selected.color:
+                        self.tablero.eliminar([skip])  # Pasar como lista de una tupla
                 self.movimientos_sin_captura = 0  # Restablecer el contador al capturar una pieza
             else:
                 self.movimientos_sin_captura += 1  # Incrementar el contador si no hay captura
+
+            # Convertir en dama si llega al otro extremo del tablero
+            if fil == 0 and self.selected.color == ROJO or fil == FILAS - 1 and self.selected.color == BLANCO:
+                self.selected.make_king()  # Utilizar el método make_king
+
             self.change_turn()
         else:
             return False
         return True
-
 
     def draw_movimientos_validos(self, movimientos):
         for move in movimientos:
@@ -360,7 +383,7 @@ class Juego:
             message = f"El jugador {color_to_name(self.turn)} está bloqueado. El jugador {color_to_name(self.opposite_turn(self.turn))} gana."
             self.game_over = True
             self.show_game_over_message(message)
-        elif self.movimientos_sin_captura >= 10:
+        elif self.movimientos_sin_captura >= 64:
             message = "Empate: Se alcanzaron 64 movimientos sin capturas."
             self.game_over = True
             self.show_game_over_message(message)
@@ -421,11 +444,15 @@ class Juego:
         max_width = self.win.get_width() - 20  # Espacio máximo permitido para el texto
 
         lines = dividir_texto(message, font, max_width)
-        rendered_lines = [font.render(line, True, (255, 0, 0)) for line in lines]
+        rendered_lines = [font.render(line, True, (0, 0, 0)) for line in lines]
 
         # Calcula la altura total del texto
         total_height = sum(line.get_height() for line in rendered_lines)
         current_y = (self.win.get_height() - total_height) // 2  # Empieza desde el centro vertical
+
+        # Dibujar el rectángulo de fondo
+        background_rect = pygame.Rect(10, current_y - 30, max_width, total_height + 35)
+        pygame.draw.rect(self.win, GRIS, background_rect)  # Fondo blanco
 
         # Renderizar cada línea y centrarla horizontalmente
         for line in rendered_lines:
@@ -437,12 +464,6 @@ class Juego:
         pygame.time.wait(3000)
         pygame.quit()
         exit()
-
-
-
-
-
-
 
 # MAIN
 
