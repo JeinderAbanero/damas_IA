@@ -3,57 +3,279 @@ import sys
 import pygame
 import random
 import time
+import copy
 from constantes import *
 from pieza import Pieza
 from tablero import Tablero
-from minimax import minimax, obtener_movimientos_posibles
+from qlearning import QLearningAgent, calcular_recompensa
 
 class Juego:
-    def __init__(self, win):
-        self.win = win
+    def __init__(self, ventana=True):
+        """Inicializa el juego"""
+        self.ventana = pygame.display.set_mode((ANCHO, ALTURA)) if ventana else None
+        if self.ventana:
+            pygame.display.set_caption('Damas')
+        self.entrenando = False  # Variable para controlar si estamos en entrenamiento
+        self.modo_evaluacion = False  # Nueva variable para controlar si estamos jugando contra humano
         self._init()
-        self.start_time = time.time()
-        self.profundidad_minimax = random.randint(1, 3)
-
-    def _init(self):
-        self.selected = None
         self.tablero = Tablero()
-        self.turn = BLANCO
-        self.movimientos_validos = {}
+        self.turn = ROJO
+        self.movimientos_validos = {}  
+        self.selected = None
+        self.q_agent = QLearningAgent()
+        self.last_state = None
+        self.last_action = None
         self.game_over = False
-        self.movimientos_sin_captura = 0
+        self.start_time = time.time()
         self.movimientos_totales = 0
+        self.movimientos_sin_captura = 0
+        self.capturas_blancas = 0
+        self.capturas_rojas = 0
         self.piezas_iniciales_rojas = 2
         self.piezas_iniciales_blancas = 2
+        self.recompensa_total = 0  
+
+    def _init(self):
+        """Inicializa el estado del juego"""
+        self.tablero = Tablero()
+        self.turn = ROJO
+        self.selected = None
+        self.game_over = False
+        self.q_agent = QLearningAgent()
+        self.movimientos_totales = 0
+        self.movimientos_sin_captura = 0
+        self.capturas_blancas = 0
+        self.capturas_rojas = 0
+        self.recompensa_total = 0
+        self.start_time = time.time()
 
     def update(self):
-        self.tablero.draw(self.win)
-        self.draw_movimientos_validos(self.movimientos_validos)
-        self.draw_indicators()
-        pygame.display.update()
+        if self.ventana:
+            self.tablero.draw(self.ventana)
+            self.draw_movimientos_validos(self.movimientos_validos)
+            self.draw_indicators()
+            pygame.display.update()
 
         if not self.game_over:
             self.check_ganador()
 
     def draw_indicators(self):
+        if not self.ventana:
+            return
+            
         font = pygame.font.Font(None, 20)
-        turn_text = font.render(f"Turno: {'IA' if self.turn == BLANCO else 'Humano'}", True, TEXT)
-        moves_text = font.render(f"Mov. Totales: {self.movimientos_totales}", True, TEXT)
-        deep_text = font.render(f"Profundidad: {self.profundidad_minimax}", True, TEXT)
-
-        if self.movimientos_sin_captura >= 1:
-            moves_cap = font.render(f"Mov. sin captura: {self.movimientos_sin_captura}", True, TEXT)
-            self.win.blit(moves_cap, (10, 55))
+        turn_text = font.render(f"Turno: {'Humano' if self.turn == ROJO else 'IA'}", True, TEXT)
+        moves_text = font.render(f"Movimientos: {self.movimientos_totales}", True, TEXT)
         
-        self.win.blit(turn_text, (10, 10))
-        self.win.blit(moves_text, (10, 25))
-        self.win.blit(deep_text, (10, 40))
+        if self.movimientos_sin_captura >= 1:
+            moves_cap = font.render(f"Mov. sin captura: {self.movimientos_sin_captura}/{MAX_MOVIMIENTOS_SIN_CAPTURA}", True, TEXT)
+            self.ventana.blit(moves_cap, (10, 55))
+        
+        self.ventana.blit(turn_text, (10, 10))
+        self.ventana.blit(moves_text, (10, 25))
 
     def ganador(self):
         return self.tablero.ganador()
 
-    def reset(self):
+    def reset(self, mostrar_stats=True):
+        """Reinicia el juego a su estado inicial"""
         self._init()
+        self.tablero = Tablero()
+        self.turn = ROJO
+        self.movimientos_validos = {}
+        self.selected = None
+        self.game_over = False
+        self.start_time = time.time()
+        self.movimientos_totales = 0
+        self.movimientos_sin_captura = 0
+        self.capturas_blancas = 0
+        self.capturas_rojas = 0
+        # Solo mostrar estadísticas si no estamos entrenando y se solicita mostrarlas
+        if not self.entrenando and mostrar_stats:
+            self.mostrar_estadisticas_consola()
+
+    def mostrar_estadisticas_partida(self):
+        """Muestra las estadísticas de la partida en la ventana"""
+        if not self.ventana:
+            return
+            
+        # Obtener estadísticas del agente
+        stats = self.q_agent.obtener_estadisticas()
+        
+        # Configurar fuente
+        font = pygame.font.Font(None, 24)
+        y_pos = 10
+        
+        # Lista de estadísticas a mostrar
+        estadisticas = [
+            f"Turno: {'ROJAS' if self.turn == ROJO else 'BLANCAS'}",
+            f"Movimientos: {self.movimientos_totales}",
+            f"Mov. sin captura: {self.movimientos_sin_captura}/{MAX_MOVIMIENTOS_SIN_CAPTURA}",
+            "",
+            "Estadísticas Globales:",
+            f"Partidas Jugadas: {stats['total_partidas']}",
+            f"Victorias: {stats['victorias']}",
+            f"Derrotas: {stats['derrotas']}",
+            f"Empates: {stats['empates']}",
+            f"Tasa de Victorias: {stats['tasa_victorias']:.1f}%",
+            f"Mov. Promedio: {stats['movimientos_promedio']:.1f}",
+            f"Tiempo Promedio: {stats['tiempo_promedio']:.1f}s"
+        ]
+        
+        # Renderizar cada línea
+        for texto in estadisticas:
+            text = font.render(texto, True, TEXT)
+            self.ventana.blit(text, (10, y_pos))
+            y_pos += 25
+
+    def end_game(self, tipo_final):
+        """Muestra el mensaje de fin de juego"""
+        if not self.ventana:
+            return
+            
+        # Crear superficie semi-transparente negra
+        overlay = pygame.Surface((ANCHO, ALTURA))
+        overlay.set_alpha(128)  # 50% de transparencia
+        overlay.fill((0, 0, 0))
+        self.ventana.blit(overlay, (0, 0))
+        
+        # Mostrar mensaje principal
+        mensaje = self.get_resultado_texto(tipo_final)
+        font_grande = pygame.font.Font(None, 50)
+        text = font_grande.render(mensaje, True, (255, 255, 255))
+        text_rect = text.get_rect(center=(ANCHO//2, ALTURA//2 - 50))
+        self.ventana.blit(text, text_rect)
+        
+        # Mostrar estadísticas
+        font_pequeño = pygame.font.Font(None, 30)
+        stats = [
+            f"Movimientos totales: {self.movimientos_totales}",
+            f"Capturas Blancas: {self.capturas_blancas}",
+            f"Capturas Rojas: {self.capturas_rojas}",
+            f"Tiempo de juego: {int(time.time() - self.start_time)}s"
+        ]
+        
+        y_offset = 20
+        for stat in stats:
+            text = font_pequeño.render(stat, True, (200, 200, 200))
+            text_rect = text.get_rect(center=(ANCHO//2, ALTURA//2 + y_offset))
+            self.ventana.blit(text, text_rect)
+            y_offset += 30
+            
+        # Botones
+        font_botones = pygame.font.Font(None, 40)
+        nueva_partida = font_botones.render("Nueva Partida", True, (255, 255, 255))
+        salir = font_botones.render("Salir", True, (255, 255, 255))
+        
+        # Rectángulos para los botones
+        nueva_partida_rect = nueva_partida.get_rect(center=(ANCHO//2 - 100, ALTURA//2 + 150))
+        salir_rect = salir.get_rect(center=(ANCHO//2 + 100, ALTURA//2 + 150))
+        
+        # Dibujar fondos de botones
+        pygame.draw.rect(self.ventana, (0, 128, 0), nueva_partida_rect.inflate(20, 10))
+        pygame.draw.rect(self.ventana, (128, 0, 0), salir_rect.inflate(20, 10))
+        
+        # Dibujar texto de botones
+        self.ventana.blit(nueva_partida, nueva_partida_rect)
+        self.ventana.blit(salir, salir_rect)
+        
+        pygame.display.update()
+        
+        # Esperar click en los botones
+        esperando = True
+        while esperando:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_pos = event.pos
+                    if nueva_partida_rect.inflate(20, 10).collidepoint(mouse_pos):
+                        self.reset()
+                        esperando = False
+                    elif salir_rect.inflate(20, 10).collidepoint(mouse_pos):
+                        pygame.quit()
+                        sys.exit()
+
+    def get_resultado_texto(self, tipo_final):
+        """Obtiene el texto del resultado según el tipo de final"""
+        if tipo_final == "victoria":
+            if self.tablero.ganador() == ROJO:
+                return "¡Has ganado!"
+            else:
+                return "¡La IA ha ganado!"
+        elif tipo_final == "empate":
+            return "¡El juego ha terminado en empate!"
+        elif tipo_final == "bloqueo":
+            if self.turn == BLANCO:
+                return "¡Has ganado! (IA bloqueada)"
+            else:
+                return "¡La IA ha ganado! (Jugador bloqueado)"
+        return ""
+
+    def ai_move(self):
+        """Realiza el movimiento de la IA"""
+        if self.game_over:
+            return
+
+        # Agregar retardo solo cuando hay ventana (jugando contra humano)
+        if self.ventana:
+            pygame.time.wait(1000)  # Esperar 1 segundo
+
+        # Obtener el estado actual
+        current_state = self.tablero
+
+        # Obtener todos los posibles movimientos
+        movimientos_posibles = self.get_all_possible_moves(BLANCO)
+        if not movimientos_posibles:
+            self.registrar_fin_juego("bloqueo", "derrota")
+            return
+
+        # Seleccionar el mejor movimiento según Q-Learning
+        next_board = self.q_agent.get_action(current_state, movimientos_posibles)
+        
+        if next_board:
+            # Contar piezas antes del movimiento
+            piezas_antes = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                             if current_state.get_pieza(fil, col) != 0)
+            
+            # Actualizar el tablero
+            self.tablero = next_board
+            self.movimientos_totales += 1
+            
+            # Contar piezas después del movimiento
+            piezas_despues = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                               if self.tablero.get_pieza(fil, col) != 0)
+            
+            # Verificar si hubo captura
+            if piezas_antes > piezas_despues:
+                piezas_capturadas = piezas_antes - piezas_despues
+                self.capturas_blancas += piezas_capturadas
+                self.movimientos_sin_captura = 0
+            else:
+                self.movimientos_sin_captura += 1
+            
+            # Actualizar visualización si hay ventana
+            if self.ventana:
+                self.update()
+            
+            # Verificar si hay ganador después del movimiento
+            ganador = self.tablero.ganador()
+            if ganador:
+                if ganador == BLANCO:
+                    self.registrar_fin_juego("victoria", "victoria")
+                else:
+                    self.registrar_fin_juego("victoria", "derrota")
+                return
+            
+            # Verificar empate por movimientos sin captura
+            if self.movimientos_sin_captura >= MAX_MOVIMIENTOS_SIN_CAPTURA:
+                self.registrar_fin_juego("empate", "empate")
+                return
+            
+            self.change_turn()
+        if self.ventana:
+            self.update()
 
     def select(self, fil, col):
         if self.game_over:
@@ -85,42 +307,74 @@ class Juego:
         return False
 
     def _move(self, fil, col):
-        pieza = self.tablero.get_pieza(fil, col)
-        if self.selected and pieza == 0 and (fil, col) in self.movimientos_validos:
-            self.tablero.move(self.selected, fil, col)
+        piece = self.tablero.get_pieza(self.selected.fil, self.selected.col)
+        if piece != 0 and (fil, col) in self.movimientos_validos:
+            # Contar piezas antes del movimiento
+            piezas_antes = sum(1 for f in range(FILAS) for c in range(COLUMNAS) 
+                             if self.tablero.get_pieza(f, c) != 0)
+            
+            # Realizar el movimiento
             skipped = self.movimientos_validos[(fil, col)]
+            self.tablero.move(piece, fil, col)
             if skipped:
-                for skip in skipped:
-                    if self.tablero.get_pieza(skip[0], skip[1]) != 0:
-                        self.tablero.eliminar([skip])
+                self.tablero.eliminar(skipped)
+                
+                # Contar piezas después del movimiento
+                piezas_despues = sum(1 for f in range(FILAS) for c in range(COLUMNAS) 
+                                   if self.tablero.get_pieza(f, c) != 0)
+                
+                # La diferencia es el número de piezas capturadas
+                piezas_capturadas = piezas_antes - piezas_despues
+                
+                # Actualizar contador según el color que movió
+                if self.turn == ROJO:
+                    self.capturas_rojas += piezas_capturadas
+                else:
+                    self.capturas_blancas += piezas_capturadas
+                
                 self.movimientos_sin_captura = 0
             else:
                 self.movimientos_sin_captura += 1
-
-            if (fil == 0 and self.selected.color == ROJO) or (fil == FILAS - 1 and self.selected.color == BLANCO):
-                self.selected.make_king()
-
+            
+            self.movimientos_totales += 1
             self.change_turn()
-        else:
-            return False
-        return True
+            return True
+        return False
 
     def draw_movimientos_validos(self, movimientos):
-        for move in movimientos:
-            fil, col = move
-            pygame.draw.circle(self.win, AZUL, 
-                             (col * TAM_CASILLA + TAM_CASILLA // 2, 
-                              fil * TAM_CASILLA + TAM_CASILLA // 2), 15)
+        if self.ventana:
+            for move in movimientos:
+                fil, col = move
+                pygame.draw.circle(self.ventana, AZUL, 
+                                (col * TAM_CASILLA + TAM_CASILLA // 2, 
+                                fil * TAM_CASILLA + TAM_CASILLA // 2), 15)
 
     def change_turn(self):
-        self.turn = BLANCO if self.turn == ROJO else ROJO
         self.movimientos_validos = {}
-        self.movimientos_totales += 1
+        self.selected = None
+        if self.turn == ROJO:
+            self.turn = BLANCO
+        else:
+            self.turn = ROJO
+
+    def get_all_possible_moves(self, color):
+        """Obtiene todos los movimientos posibles para un color"""
+        possible_moves = []
+        for fil in range(FILAS):
+            for col in range(COLUMNAS):
+                pieza = self.tablero.get_pieza(fil, col)
+                if pieza != 0 and pieza.color == color:
+                    moves = self.tablero.get_movimientos_validos(pieza)
+                    for move, skipped in moves.items():
+                        new_board = self.tablero.simulate_move(pieza, move[0], move[1])
+                        if new_board:
+                            possible_moves.append(new_board)
+        return possible_moves
 
     def check_blocked(self, turn):
-        for fila in range(FILAS):
+        for fil in range(FILAS):
             for col in range(COLUMNAS):
-                pieza = self.tablero.get_pieza(fila, col)
+                pieza = self.tablero.get_pieza(fil, col)
                 if pieza != 0 and pieza.color == turn:
                     movimientos = self.tablero.get_movimientos_validos(pieza)
                     if movimientos:
@@ -128,158 +382,298 @@ class Juego:
         return True
 
     def check_ganador(self):
+        """Verifica si hay un ganador y registra las estadísticas de la partida"""
+        # Verificar victoria por capturas
         ganador = self.tablero.ganador()
-        message = None
-        resultado = ""
+        if ganador:
+            resultado = "victoria" if ganador == BLANCO else "derrota"
+            self.registrar_fin_juego("victoria", resultado)
+            return True
 
-        if ganador is not None:
-            if ganador == BLANCO:
-                message = "Has sido vencido por la IA."
-                resultado = "Ganó la IA"
-            elif ganador == ROJO:
-                message = "¡Felicidades! Has vencido a la IA."
-                resultado = "Ganó el Humano"
-        elif self.check_blocked(self.turn):
-            if self.turn == BLANCO:
-                message = "El jugador BLANCO está bloqueado. ¡Felicidades! Has vencido a la IA."
-                resultado = "Ganó el Humano por bloqueo"
-            else:
-                message = "El jugador ROJO está bloqueado. Has sido vencido por la IA."
-                resultado = "Ganó la IA por bloqueo"
-        elif self.movimientos_sin_captura >= 64:
-            message = "Empate: Se alcanzaron 64 movimientos sin capturas."
-            resultado = "Empate"
+        # Verificar empate por movimientos sin captura
+        if self.movimientos_sin_captura >= MAX_MOVIMIENTOS_SIN_CAPTURA:
+            self.registrar_fin_juego("empate", "empate")
+            return True
 
-        if message:
+        # Verificar si hay bloqueo
+        if self.check_blocked(self.turn):
+            resultado = "victoria" if self.turn == ROJO else "derrota"
+            self.registrar_fin_juego("bloqueo", resultado)
+            return True
+            
+        return False
+
+    def registrar_fin_juego(self, tipo_final, resultado):
+        """Registra el fin del juego y actualiza estadísticas"""
+        if not self.game_over:  # Solo registrar si el juego no ha terminado
             self.game_over = True
-            self.show_game_over_message(message, resultado)
+            tiempo_partida = time.time() - self.start_time
+            
+            # Actualizar estadísticas del agente silenciosamente durante el entrenamiento
+            if self.q_agent and not self.modo_evaluacion:
+                self.q_agent.registrar_partida(
+                    resultado=resultado,
+                    num_movimientos=self.movimientos_totales,
+                    tiempo_partida=tiempo_partida,
+                    recompensa_total=self.recompensa_total
+                )
+                self.q_agent.save_q_table()
+            
+            # Solo mostrar mensaje final si hay ventana (modo juego)
+            if self.ventana:
+                self.update()
+                pygame.time.wait(500)
+                self.end_game(tipo_final)
 
-    def ai_move(self):
-        if self.game_over:
-            return
+    def mostrar_estadisticas_consola(self):
+        """Muestra las estadísticas del agente en la consola"""
+        print("\n=== Comenzando partida contra la IA ===")
+        print("\n=== Estadísticas Globales del Agente ===")
+        stats = self.q_agent.obtener_estadisticas()
+        print(f"Partidas Jugadas: {stats['total_partidas']}")
+        print(f"Victorias: {stats['victorias']}")
+        print(f"Derrotas: {stats['derrotas']}")
+        print(f"Empates: {stats['empates']}")
+        print(f"Tasa de Victorias: {stats['tasa_victorias']:.1f}%")
+        print(f"Mov. Promedio: {stats['movimientos_promedio']:.1f}")
+        print(f"Tiempo Promedio por Partida: {stats['tiempo_promedio']:.1f}s")
+        print(f"Recompensa Promedio: {stats['recompensa_promedio']:.1f}")
+        print("========================================")
+
+def train_ai(episodes=10000):  # Aumentado para más experiencia
+    """Entrena la IA jugando contra sí misma"""
+    print(f"\nIniciando entrenamiento por {episodes} episodios...")
+    game = Juego(ventana=None)  # Crear juego sin ventana para el entrenamiento
+    game.entrenando = True  # Indicar que estamos entrenando
+    game.modo_evaluacion = False  # Indicar que no estamos en modo evaluación
+    ultimo_progreso = 0
+    
+    for episode in range(episodes):
+        game.reset(mostrar_stats=False)  # Reiniciar sin mostrar estadísticas
         
-        self.update()
-        pygame.time.wait(500)
+        # Mostrar progreso cada vez que cambie el porcentaje
+        progreso_actual = ((episode + 1) * 100) // episodes
+        if progreso_actual > ultimo_progreso:
+            ultimo_progreso = progreso_actual
+            stats = game.q_agent.obtener_estadisticas()
+            print(f"\rProgreso: {progreso_actual}% - Tasa de victorias: {stats['tasa_victorias']:.1f}% - Recompensa: {stats['recompensa_promedio']:.1f}", end="")
+        
+        while not game.game_over:
+            if game.turn == BLANCO:
+                game.ai_move()
+            else:
+                # La IA juega contra sí misma
+                current_state = game.tablero
+                movimientos_posibles = game.get_all_possible_moves(ROJO)
+                
+                if not movimientos_posibles:
+                    game.registrar_fin_juego("bloqueo", "victoria")
+                    break
+                
+                # Usar el mismo agente para el otro jugador
+                next_board = game.q_agent.get_action(current_state, movimientos_posibles)
+                
+                if next_board:
+                    # Contar piezas antes del movimiento
+                    piezas_antes = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                                     if current_state.get_pieza(fil, col) != 0)
+                    
+                    # Actualizar el tablero
+                    game.tablero = next_board
+                    game.movimientos_totales += 1
+                    
+                    # Contar piezas después del movimiento
+                    piezas_despues = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                                       if game.tablero.get_pieza(fil, col) != 0)
+                    
+                    # Verificar si hubo captura
+                    if piezas_antes > piezas_despues:
+                        piezas_capturadas = piezas_antes - piezas_despues
+                        game.capturas_rojas += piezas_capturadas
+                        game.movimientos_sin_captura = 0
+                    else:
+                        game.movimientos_sin_captura += 1
+                    
+                    # Usar recompensa negativa para el oponente
+                    reward = -calcular_recompensa(game.tablero, piezas_antes > piezas_despues)
+                    game.recompensa_total += reward
+                    
+                    next_possible_actions = game.get_all_possible_moves(ROJO)
+                    game.q_agent.learn(current_state, next_board, reward, game.tablero, next_possible_actions)
+                
+                game.change_turn()
+            
+            # Evitar juegos infinitos - límite más flexible
+            if game.movimientos_totales > 150:  # Aumentado de 100 a 150
+                game.registrar_fin_juego("empate", "empate")
+                break
+    
+    print("\n\nEntrenamiento completado!")
+    
+    # Guardar el progreso del entrenamiento
+    game.q_agent.save_q_table()
+    
+    return game.q_agent
 
-        mejor_movimiento = None
-        mejor_puntuacion = float('-inf')
-        for movimiento in obtener_movimientos_posibles(self.tablero, BLANCO):
-            puntuacion = minimax(movimiento, self.profundidad_minimax, False)
-            if puntuacion > mejor_puntuacion:
-                mejor_puntuacion = puntuacion
-                mejor_movimiento = movimiento
+def main():
+    pygame.init()
+    ventana = pygame.display.set_mode((ANCHO, ALTURA))
+    pygame.display.set_caption('Damas')
+    
+    # Mostrar diálogo de entrenamiento
+    train, episodes = show_training_dialog(ventana)
+    
+    # Crear juego
+    game = Juego(ventana=True)
+    
+    if train:
+        # Entrenar la IA sin mostrar estadísticas
+        trained_agent = train_ai(episodes)
+        game.q_agent = trained_agent
+        game.entrenando = False  # Asegurarnos de que no estamos en modo entrenamiento
+        game.modo_evaluacion = True  # Indicar que estamos en modo evaluación
+        
+        # Mostrar estadísticas solo al terminar el entrenamiento
+        game.mostrar_estadisticas_consola()
+    
+    def mostrar_estadisticas():
+        """Función auxiliar para mostrar las estadísticas"""
+        print("\n=== Comenzando partida contra la IA ===")
+        print("\n=== Estadísticas Globales del Agente ===")
+        stats = game.q_agent.obtener_estadisticas()
+        print(f"Partidas Jugadas: {stats['total_partidas']}")
+        print(f"Victorias: {stats['victorias']}")
+        print(f"Derrotas: {stats['derrotas']}")
+        print(f"Empates: {stats['empates']}")
+        print(f"Tasa de Victorias: {stats['tasa_victorias']:.1f}%")
+        print(f"Mov. Promedio: {stats['movimientos_promedio']:.1f}")
+        print(f"Tiempo Promedio por Partida: {stats['tiempo_promedio']:.1f}s")
+        print(f"Recompensa Promedio: {stats['recompensa_promedio']:.1f}")
+        print("========================================")
+    
+    # Bucle principal del juego
+    running = True
+    clock = pygame.time.Clock()
+    
+    while running:
+        clock.tick(FPS)
+        
+        if game.turn == BLANCO and not game.game_over:
+            game.ai_move()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                
+            if event.type == pygame.MOUSEBUTTONDOWN and not game.game_over:
+                pos = pygame.mouse.get_pos()
+                row, col = get_fil_col_from_mouse(pos)
+                game.select(row, col)
+                
+            # Si se presiona el botón N, nueva partida
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_n:
+                    game.reset()
+                    mostrar_estadisticas()  # Mostrar estadísticas al iniciar nueva partida
+        
+        game.update()
+    
+    pygame.quit()
 
-        if mejor_movimiento:
-            self.tablero = mejor_movimiento
-            self.change_turn()
-            self.update()
-            self.check_ganador()
-
-    def mostrar_estadisticas(self, resultado):
-        end_time = time.time()
-        tiempo_total = end_time - self.start_time
-
-        capturas_blancas = self.piezas_iniciales_rojas - self.tablero.ROJO_left
-        capturas_rojas = self.piezas_iniciales_blancas - self.tablero.BLANCO_left
-
-        print(f"Partida terminada. {resultado}")
-        print(f"Movimientos totales: {self.movimientos_totales}")
-        print(f"Fichas capturadas por las blancas: {capturas_blancas}")
-        print(f"Fichas capturadas por las rojas: {capturas_rojas}")
-        print(f"Profundidad de Minimax: {self.profundidad_minimax}")
-        print(f"Tiempo total de juego: {tiempo_total:.2f} segundos")
-
-    def show_game_over_message(self, message, resultado):
-        font = pygame.font.Font(None, 36)
-        small_font = pygame.font.Font(None, 24)
-        max_width = self.win.get_width() - 20
-
-        lines_message = dividir_texto(message, font, max_width)
-        rendered_lines_message = [font.render(line, True, (255, 255, 255)) for line in lines_message]
-
-        total_height_message = sum(line.get_height() for line in rendered_lines_message)
-        current_y_message = (self.win.get_height() - total_height_message) // 2 - 50
-
-        background_rect_message = pygame.Rect(10, current_y_message - 35, max_width, total_height_message + 40)
-        pygame.draw.rect(self.win, (120, 120, 120), background_rect_message)
-
-        for line in rendered_lines_message:
-            text_rect = line.get_rect(center=(self.win.get_width() // 2, current_y_message))
-            self.win.blit(line, text_rect)
-            current_y_message += line.get_height()
-
-        pygame.display.update()
-        pygame.time.wait(1000)
-
-        end_time = time.time()
-        tiempo_total = end_time - self.start_time
-
-        capturas_blancas = self.piezas_iniciales_rojas - self.tablero.ROJO_left
-        capturas_rojas = self.piezas_iniciales_blancas - self.tablero.BLANCO_left
-
-        estadisticas = [
-            f"Partida terminada. {resultado}",
-            f"Movimientos totales: {self.movimientos_totales}",
-            f"Fichas capturadas por las blancas: {capturas_blancas}",
-            f"Fichas capturadas por las rojas: {capturas_rojas}",
-            f"Profundidad de Minimax: {self.profundidad_minimax}",
-            f"Tiempo total de juego: {tiempo_total:.2f} segundos"
-        ]
-
-        lines_stats = [small_font.render(stat, True, (255, 255, 255)) for stat in estadisticas]
-
-        total_height_stats = sum(line.get_height() for line in lines_stats)
-        current_y_stats = current_y_message + total_height_message + 50
-
-        background_rect_stats = pygame.Rect(10, current_y_stats - 20, max_width, total_height_stats + 20)
-        pygame.draw.rect(self.win, (128, 128, 128), background_rect_stats)
-
-        for line in lines_stats:
-            text_rect = line.get_rect(center=(self.win.get_width() // 2, current_y_stats))
-            self.win.blit(line, text_rect)
-            current_y_stats += line.get_height()
-
-        pygame.display.update()
-        pygame.time.wait(6500)
-        pygame.quit()
-        self.mostrar_estadisticas(resultado)
-        exit()
+def print_board_state(tablero):
+    """Imprime el estado actual del tablero en la consola"""
+    for fil in range(FILAS):
+        row = []
+        for col in range(COLUMNAS):
+            pieza = tablero.get_pieza(fil, col)
+            if pieza == 0:
+                row.append('.')
+            else:
+                if pieza.color == BLANCO:
+                    row.append('B' if not pieza.king else 'K')
+                else:
+                    row.append('R' if not pieza.king else 'Q')
+        print(' '.join(row))
 
 def get_fil_col_from_mouse(pos):
+    """Obtiene la fila y columna del tablero a partir de la posición del mouse"""
     x, y = pos
     fil = y // TAM_CASILLA
     col = x // TAM_CASILLA
     return fil, col
 
-def main():
-    pygame.init()
-    WIN = pygame.display.set_mode((ANCHO, ALTURA))
-    pygame.display.set_caption('DAMAS - IA')
+def show_training_dialog(ventana):
+    font = pygame.font.Font(None, 36)
+    text = font.render("¿Desea entrenar la IA antes de jugar?", True, TEXT)
+    text_rect = text.get_rect(center=(ANCHO//2, ALTURA//2 - 80))
+
+    # Input para episodios
+    input_text = "1000"
+    input_active = False
+    input_rect = pygame.Rect((ANCHO//2 - 100), ALTURA//2 - 20, 200, 40)
+    episodes_text = font.render("Episodios:", True, TEXT)
+    episodes_rect = episodes_text.get_rect(midright=(input_rect.left - 10, input_rect.centery))
+
+    # Crear botones
+    button_width = 100
+    button_height = 40
+    button_margin = 20
     
-    run = True
-    clock = pygame.time.Clock()
-    game = Juego(WIN)
-
-    while run:
-        clock.tick(FPS)
-
-        if game.ganador() != None:
-            print(game.ganador())
-            run = False
-        
+    si_button = pygame.Rect((ANCHO//2 - button_width - button_margin), ALTURA//2 + 50, button_width, button_height)
+    no_button = pygame.Rect((ANCHO//2 + button_margin), ALTURA//2 + 50, button_width, button_height)
+    
+    si_text = font.render("Sí", True, TEXT)
+    no_text = font.render("No", True, TEXT)
+    
+    si_text_rect = si_text.get_rect(center=si_button.center)
+    no_text_rect = no_text.get_rect(center=no_button.center)
+    
+    while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                run = False
-            
-            if event.type == pygame.MOUSEBUTTONDOWN and game.turn == ROJO:
-                pos = pygame.mouse.get_pos()
-                fil, col = get_fil_col_from_mouse(pos)
-                game.select(fil, col)
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = event.pos
+                if si_button.collidepoint(mouse_pos):
+                    try:
+                        episodes = max(1, min(10000, int(input_text)))
+                        return True, episodes
+                    except ValueError:
+                        return True, 1000
+                elif no_button.collidepoint(mouse_pos):
+                    return False, 0
+                elif input_rect.collidepoint(mouse_pos):
+                    input_active = True
+                else:
+                    input_active = False
+            if event.type == pygame.KEYDOWN and input_active:
+                if event.key == pygame.K_RETURN:
+                    input_active = False
+                elif event.key == pygame.K_BACKSPACE:
+                    input_text = input_text[:-1]
+                else:
+                    if event.unicode.isnumeric() and len(input_text) < 5:
+                        input_text += event.unicode
+                    
+        ventana.fill((255, 255, 255))
+        ventana.blit(text, text_rect)
+        ventana.blit(episodes_text, episodes_rect)
         
-        if game.turn == BLANCO:
-            game.ai_move()
-
-        game.update()
+        # Dibujar input
+        color = AZUL if input_active else GRIS
+        pygame.draw.rect(ventana, color, input_rect, 2)
+        input_surface = font.render(input_text, True, TEXT)
+        input_rect_text = input_surface.get_rect(center=input_rect.center)
+        ventana.blit(input_surface, input_rect_text)
+        
+        # Dibujar botones
+        pygame.draw.rect(ventana, GRIS, si_button)
+        pygame.draw.rect(ventana, GRIS, no_button)
+        ventana.blit(si_text, si_text_rect)
+        ventana.blit(no_text, no_text_rect)
+        
+        pygame.display.update()
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,9 @@ FILAS, COLUMNAS = 4, 4
 TAM_CASILLA = ANCHO // COLUMNAS
 FPS = 60
 
+# Constante para el máximo de movimientos sin captura antes de declarar empate
+MAX_MOVIMIENTOS_SIN_CAPTURA = 64
+
 # Colores
 ROJO = (255, 105, 97)
 ROJO_TAB = (255, 0, 0)

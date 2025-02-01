@@ -1,6 +1,7 @@
 import pygame
 from constantes import *
 from pieza import Pieza
+import copy
 
 class Tablero:
     def __init__(self):
@@ -53,13 +54,13 @@ class Tablero:
     def eliminar(self, piezas):
         for pieza in piezas:
             fil, col = pieza
-            if self.tablero[fil][col] != 0:
-                color = self.tablero[fil][col].color
-                if color == ROJO:
+            piece = self.tablero[fil][col]
+            if piece != 0:  # Verificar antes de eliminar
+                if piece.color == ROJO:
                     self.ROJO_left -= 1
-                elif color == BLANCO:
+                else:
                     self.BLANCO_left -= 1
-                self.tablero[fil][col] = 0
+            self.tablero[fil][col] = 0
 
     def ganador(self):
         if self.ROJO_left <= 0:
@@ -105,3 +106,26 @@ class Tablero:
                     if self.get_movimientos_validos(pieza):
                         return False
         return True
+
+    def simulate_move(self, piece, row, col):
+        """Simula un movimiento y devuelve el nuevo estado del tablero"""
+        board = copy.deepcopy(self)
+        moves = self.get_movimientos_validos(piece)
+        if (row, col) in moves:
+            skipped = moves[(row, col)]
+            if skipped:
+                board.eliminar(skipped)
+        board.move(board.get_pieza(piece.fil, piece.col), row, col)
+        return board
+
+    def piezas_capturadas(self, nuevo_tablero):
+        """
+        Compara dos estados del tablero y determina si hubo capturas
+        Returns:
+            bool: True si hubo capturas, False en caso contrario
+        """
+        piezas_actual = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                           if self.tablero[fil][col] != 0)
+        piezas_nuevo = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                          if nuevo_tablero.tablero[fil][col] != 0)
+        return piezas_actual > piezas_nuevo
