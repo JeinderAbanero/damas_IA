@@ -8,3 +8,5 @@ __pycache__/
 Thumbs.db
 
 # Include the dist folder to add the executable
+q_table.pkl
+estadisticas.pkl

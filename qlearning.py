@@ -4,10 +4,12 @@ import os
 from constantes import *
 
 class QLearningAgent:
-    def __init__(self, alpha=0.15, gamma=0.95, epsilon=0.15):  
+    def __init__(self, alpha=0.2, gamma=0.99, epsilon=0.3):  
         self.alpha = alpha  
         self.gamma = gamma  
         self.epsilon = epsilon  
+        self.min_epsilon = 0.01  
+        self.epsilon_decay = 0.9995  
         self.q_table = {}  
         self.victorias = 0
         self.derrotas = 0
@@ -16,6 +18,7 @@ class QLearningAgent:
         self.historial_movimientos = []
         self.tiempo_promedio_partida = 0
         self.total_partidas = 0
+        self.partidas_desde_ultimo_ajuste = 0
         self.load_q_table()
 
     def get_state_key(self, tablero):
@@ -34,56 +37,88 @@ class QLearningAgent:
         return ','.join(state)
 
     def get_action(self, tablero, movimientos_posibles):
-        """Selecciona una acción usando la política epsilon-greedy"""
+        """Selecciona una acción usando la política epsilon-greedy mejorada"""
         state = self.get_state_key(tablero)
         
-        # Exploración: elegir un movimiento aleatorio
+        # Decaimiento de epsilon
+        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+        
+        # Exploración inteligente: favorecer movimientos de captura
         if np.random.random() < self.epsilon:
+            movimientos_captura = [m for m in movimientos_posibles if self.es_movimiento_captura(tablero, m)]
+            if movimientos_captura:
+                return np.random.choice(movimientos_captura)
             return np.random.choice(movimientos_posibles)
         
-        # Explotación: elegir el mejor movimiento conocido
-        return self.get_best_action(state, movimientos_posibles)
+        # Explotación con preferencia por capturas
+        return self.get_best_action(state, movimientos_posibles, tablero)
 
-    def get_best_action(self, state, movimientos_posibles):
-        """Obtiene la mejor acción para un estado dado"""
+    def es_movimiento_captura(self, tablero_actual, tablero_siguiente):
+        """Determina si un movimiento es de captura contando piezas"""
+        piezas_antes = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                          if tablero_actual.get_pieza(fil, col) != 0)
+        piezas_despues = sum(1 for fil in range(FILAS) for col in range(COLUMNAS) 
+                            if tablero_siguiente.get_pieza(fil, col) != 0)
+        return piezas_antes > piezas_despues
+
+    def get_best_action(self, state, movimientos_posibles, tablero_actual):
+        """Obtiene la mejor acción con preferencia por capturas"""
         if not movimientos_posibles:
             return None
 
-        # Si el estado no está en la tabla Q, inicializarlo
         if state not in self.q_table:
             self.q_table[state] = {}
 
-        best_value = float('-inf')
-        best_action = np.random.choice(movimientos_posibles)  # Por defecto, elegir uno aleatorio
-
+        # Separar movimientos de captura y no captura
+        movimientos_captura = []
+        movimientos_normales = []
+        
         for action in movimientos_posibles:
+            if self.es_movimiento_captura(tablero_actual, action):
+                movimientos_captura.append(action)
+            else:
+                movimientos_normales.append(action)
+
+        best_value = float('-inf')
+        best_action = None
+
+        # Priorizar movimientos de captura
+        movimientos_a_evaluar = movimientos_captura + movimientos_normales
+        
+        for action in movimientos_a_evaluar:
             action_key = self.get_action_key(action)
             if action_key not in self.q_table[state]:
-                self.q_table[state][action_key] = 0.0
+                # Inicializar con valor más alto para capturas
+                initial_value = 1.0 if action in movimientos_captura else 0.0
+                self.q_table[state][action_key] = initial_value
             
-            if self.q_table[state][action_key] > best_value:
-                best_value = self.q_table[state][action_key]
+            current_value = self.q_table[state][action_key]
+            # Bonus para movimientos de captura
+            if action in movimientos_captura:
+                current_value *= 1.2  # 20% bonus para capturas
+            
+            if current_value > best_value:
+                best_value = current_value
                 best_action = action
 
-        return best_action
+        return best_action or np.random.choice(movimientos_posibles)
 
     def get_action_key(self, tablero):
         """Convierte una acción (tablero resultante) en una cadena única"""
         return self.get_state_key(tablero)
 
     def learn(self, state, action, reward, next_state, next_possible_actions):
-        """Actualiza la tabla Q basándose en la recompensa recibida"""
+        """Actualiza la tabla Q con aprendizaje mejorado"""
         state_key = self.get_state_key(state)
         action_key = self.get_action_key(action)
         next_state_key = self.get_state_key(next_state)
 
-        # Inicializar valores si no existen
         if state_key not in self.q_table:
             self.q_table[state_key] = {}
         if action_key not in self.q_table[state_key]:
             self.q_table[state_key][action_key] = 0.0
 
-        # Calcular el valor Q máximo para el siguiente estado
+        # Calcular el valor Q máximo para el siguiente estado con bonus por capturas
         next_max = 0
         if next_possible_actions:
             next_values = []
@@ -91,13 +126,21 @@ class QLearningAgent:
                 for next_action in next_possible_actions:
                     next_action_key = self.get_action_key(next_action)
                     if next_action_key in self.q_table[next_state_key]:
-                        next_values.append(self.q_table[next_state_key][next_action_key])
+                        value = self.q_table[next_state_key][next_action_key]
+                        if self.es_movimiento_captura(next_state, next_action):
+                            value *= 1.2  # Bonus para capturas futuras
+                        next_values.append(value)
             if next_values:
                 next_max = max(next_values)
 
-        # Actualizar el valor Q
+        # Actualizar el valor Q con mayor peso en recompensas positivas
         current_q = self.q_table[state_key][action_key]
         new_q = current_q + self.alpha * (reward + self.gamma * next_max - current_q)
+        
+        # Ajuste adicional para favorecer estados ganadores
+        if reward > 0:
+            new_q *= 1.1  # 10% extra para recompensas positivas
+        
         self.q_table[state_key][action_key] = new_q
 
     def registrar_partida(self, resultado, num_movimientos, tiempo_partida, recompensa_total):
@@ -201,13 +244,9 @@ class QLearningAgent:
                 self.tiempo_promedio_partida = estadisticas['tiempo_promedio_partida']
                 self.total_partidas = estadisticas['total_partidas']
 
-def calcular_recompensa(tablero, movimiento_captura):
+def calcular_recompensa(tablero, movimiento_captura, movimientos_sin_captura):
     """Calcula la recompensa para un estado dado"""
-    recompensa = 10  # Recompensa base aumentada para 4x4
-    
-    # Recompensa por capturar piezas (más alta en 4x4 porque hay menos piezas)
-    if movimiento_captura:
-        recompensa += 100  # Aumentada porque cada pieza es más valiosa en 4x4
+    recompensa = 0
     
     # Contar piezas y reyes
     piezas_rojas = 0
@@ -223,41 +262,59 @@ def calcular_recompensa(tablero, movimiento_captura):
                     piezas_rojas += 1
                     if pieza.king:
                         reyes_rojos += 1
-                        recompensa += 50  # Aumentado porque en 4x4 los reyes son más valiosos
                 else:
                     piezas_blancas += 1
                     if pieza.king:
                         reyes_blancos += 1
-    
-    # Recompensa por ventaja de piezas (más alta porque hay menos piezas)
+
+    # Recompensa base por diferencia de piezas
     diferencia_piezas = piezas_rojas - piezas_blancas
-    recompensa += diferencia_piezas * 60  # Duplicado porque cada pieza es más importante
-    
-    # Recompensa por posición
+    recompensa += diferencia_piezas * 25
+
+    # Recompensa por reyes
+    diferencia_reyes = reyes_rojos - reyes_blancos
+    recompensa += diferencia_reyes * 40
+
+    # Recompensa agresiva por captura
+    if movimiento_captura:
+        recompensa += 50
+        if movimientos_sin_captura < 5:
+            recompensa += 30  # Bonus por mantener presión
+
+    # Penalización por inactividad
+    if movimientos_sin_captura > 5:
+        recompensa -= (movimientos_sin_captura - 5) * 10
+
+    # Bonus por posición y avance
     for fil in range(FILAS):
         for col in range(COLUMNAS):
             pieza = tablero.get_pieza(fil, col)
             if pieza != 0 and pieza.color == ROJO:
                 if not pieza.king:
-                    # Recompensa por avanzar hacia el lado contrario
-                    # En 4x4 el avance es más importante porque hay menos filas
-                    recompensa += (FILAS - fil - 1) * 10  # Triplicado para 4x4
-    
-                    # Bonus por estar cerca de convertirse en rey
-                    # En 4x4, esto es cuando fil >= 2
+                    # Bonus por avance
+                    recompensa += (FILAS - fil - 1) * 5
+                    
+                    # Bonus por proximidad a coronación
                     if fil >= FILAS - 2:
-                        recompensa += 40  # Duplicado porque coronar es más fácil/importante en 4x4
+                        recompensa += 20
                 else:
-                    # Los reyes reciben bonus por estar en el centro del tablero
-                    # En 4x4 el control del centro es más crítico
-                    distancia_centro = abs(col - COLUMNAS//2) + abs(fil - FILAS//2)
-                    recompensa += (4 - distancia_centro) * 15  # Triplicado para 4x4
-    
-    # Penalizaciones y bonificaciones adicionales
-    if piezas_rojas < piezas_blancas:  # Si estamos en desventaja
-        recompensa -= 20  # Duplicada la penalización
-    
+                    # Bonus por control del centro
+                    if 1 <= fil <= FILAS-2 and 1 <= col <= COLUMNAS-2:
+                        recompensa += 15
+
+    # Victoria/Derrota
     if piezas_rojas > 0 and piezas_blancas == 0:  # Victoria
-        recompensa += 500  # Aumentada porque ganar en 4x4 es más significativo
-    
-    return recompensa
+        recompensa += 200
+        if movimientos_sin_captura < 20:  # Victoria rápida
+            recompensa += (20 - movimientos_sin_captura) * 5
+        if piezas_rojas >= 2:  # Victoria dominante
+            recompensa += piezas_rojas * 20
+    elif piezas_rojas == 0 and piezas_blancas > 0:  # Derrota
+        recompensa -= 200
+        recompensa -= piezas_blancas * 10
+
+    # Penalización por tendencia al empate
+    if movimientos_sin_captura >= 10:
+        recompensa -= (movimientos_sin_captura - 9) * 15
+
+    return -recompensa

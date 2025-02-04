@@ -19,7 +19,7 @@ class Juego:
         self.modo_evaluacion = False  # Nueva variable para controlar si estamos jugando contra humano
         self._init()
         self.tablero = Tablero()
-        self.turn = ROJO
+        self.turn = BLANCO
         self.movimientos_validos = {}  
         self.selected = None
         self.q_agent = QLearningAgent()
@@ -38,7 +38,7 @@ class Juego:
     def _init(self):
         """Inicializa el estado del juego"""
         self.tablero = Tablero()
-        self.turn = ROJO
+        self.turn = BLANCO
         self.selected = None
         self.game_over = False
         self.q_agent = QLearningAgent()
@@ -436,8 +436,8 @@ class Juego:
         print(f"Empates: {stats['empates']}")
         print(f"Tasa de Victorias: {stats['tasa_victorias']:.1f}%")
         print(f"Mov. Promedio: {stats['movimientos_promedio']:.1f}")
-        print(f"Tiempo Promedio por Partida: {stats['tiempo_promedio']:.1f}s")
-        print(f"Recompensa Promedio: {stats['recompensa_promedio']:.1f}")
+        #print(f"Tiempo Promedio por Partida: {stats['tiempo_promedio']:.1f}s")
+        #print(f"Recompensa Promedio: {stats['recompensa_promedio']:.1f}")
         print("========================================")
 
 def train_ai(episodes=10000):  # Aumentado para más experiencia
@@ -456,8 +456,8 @@ def train_ai(episodes=10000):  # Aumentado para más experiencia
         if progreso_actual > ultimo_progreso:
             ultimo_progreso = progreso_actual
             stats = game.q_agent.obtener_estadisticas()
-            print(f"\rProgreso: {progreso_actual}% - Tasa de victorias: {stats['tasa_victorias']:.1f}% - Recompensa: {stats['recompensa_promedio']:.1f}", end="")
-        
+            #print(f"\rProgreso: {progreso_actual}% - Tasa de victorias: {stats['tasa_victorias']:.1f}% - Recompensa: {stats['recompensa_promedio']:.1f}", end="")
+            print(f"\rProgreso: {progreso_actual}% - Tasa de victorias: {stats['tasa_victorias']:.1f}%", end="")
         while not game.game_over:
             if game.turn == BLANCO:
                 game.ai_move()
@@ -494,8 +494,8 @@ def train_ai(episodes=10000):  # Aumentado para más experiencia
                     else:
                         game.movimientos_sin_captura += 1
                     
-                    # Usar recompensa negativa para el oponente
-                    reward = -calcular_recompensa(game.tablero, piezas_antes > piezas_despues)
+                    # Calcular recompensa (ya viene invertida para el oponente)
+                    reward = calcular_recompensa(game.tablero, piezas_antes > piezas_despues, game.movimientos_sin_captura)
                     game.recompensa_total += reward
                     
                     next_possible_actions = game.get_all_possible_moves(ROJO)
@@ -504,7 +504,7 @@ def train_ai(episodes=10000):  # Aumentado para más experiencia
                 game.change_turn()
             
             # Evitar juegos infinitos - límite más flexible
-            if game.movimientos_totales > 150:  # Aumentado de 100 a 150
+            if game.movimientos_totales > 100:  # Aumentado de 100 a 150
                 game.registrar_fin_juego("empate", "empate")
                 break
     
