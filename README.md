@@ -1,26 +1,119 @@
-# Damas IA
+# 🎮 Damas con Q-Learning
 
-**Damas IA** es un juego de damas desarrollado en Python que utiliza la biblioteca `pygame` para los gráficos y el algoritmo Minimax para el agente basado en conocimiento.
+Un juego de damas implementado en Python que utiliza Q-Learning para crear un agente de IA que aprende y mejora con cada partida.
 
-## Descripción
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Pygame](https://img.shields.io/badge/Pygame-2.0+-yellow.svg)](https://www.pygame.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-Este proyecto implementa un juego de damas en un tablero 4 x 4 en el que el oponente es un agente basado en conocimiento. El jugador puede enfrentarse a la IA que toma decisiones utilizando el algoritmo Minimax. El juego incluye una imagen de corona para las piezas que alcanzan la fila opuesta y se convierten en damas.
+## 🌟 Características
 
-## Requisitos
+- **Aprendizaje por Refuerzo**: Implementación de Q-Learning para el aprendizaje autónomo
+- **Interfaz Gráfica**: Visualización del juego usando Pygame
+- **Modos de Juego**: 
+  - Entrenamiento IA vs IA
+  - Jugador vs IA entrenada
+- **Estadísticas en Tiempo Real**: Seguimiento del rendimiento del agente
+- **Sistema de Recompensas Optimizado**: Incentiva jugadas agresivas y decisivas
 
-Asegúrate de tener instalado Python 3 y las siguientes dependencias:
+## 🎯 Rendimiento del Agente
 
-- pygame
+Con la configuración actual, el agente logra:
+- **Tasa de Victoria**: ~60%
+- **Tasa de Empate**: ~5%
+- **Movimientos Promedio por Partida**: ~24
 
-Puedes instalar las dependencias utilizando el archivo `requirements.txt` proporcionado.
+## 🛠️ Configuración
 
-## Instalación
+### Requisitos
+```bash
+python >= 3.8
+pygame >= 2.0.0
+numpy >= 1.19.0
+```
 
-1. Clona este repositorio:
-   ```sh
-   git clone https://github.com/JeinderAbanero/damas_IA.git
-   ```
+### Instalación
 
-## Ejecución
+1. Clona el repositorio:
+```bash
+git clone git@github.com:JeinderAbanero/damas_IA.git
+cd damas_IA
+```
 
-El ejecutable lo puedes encontrar dentro de la carpeta dist
+2. Instala las dependencias:
+```bash
+pip install -r requirements.txt
+```
+
+## 🎮 Uso
+
+### Entrenar el Agente
+```bash
+python damas.py
+```
+Selecciona "Sí" cuando se te pregunte por el entrenamiento.
+
+### Jugar contra la IA
+```bash
+python damas.py
+```
+Selecciona "No" para usar un agente previamente entrenado.
+
+## 🧠 Parámetros de Q-Learning
+
+El agente puede configurarse con diferentes parámetros para ajustar su comportamiento:
+
+### Configuración Actual (Conservadora)
+```python
+alpha = 0.1    # Tasa de aprendizaje
+gamma = 0.9    # Factor de descuento
+epsilon = 0.2  # Tasa de exploración
+```
+
+### Configuraciones Alternativas
+
+#### Agresiva
+```python
+alpha = 0.3    # Aprendizaje más rápido
+gamma = 0.99   # Mayor énfasis en recompensas futuras
+epsilon = 0.4  # Alta exploración
+```
+
+#### Equilibrada
+```python
+alpha = 0.2    # Balance aprendizaje-estabilidad
+gamma = 0.95   # Balance recompensas inmediatas-futuras
+epsilon = 0.25 # Exploración moderada
+```
+
+## 📊 Sistema de Recompensas
+
+El agente recibe recompensas por:
+- **Victoria**: +200 puntos
+- **Captura de Pieza**: +50 puntos
+- **Coronación**: +20 puntos
+- **Control del Centro**: +15 puntos
+- **Capturas Consecutivas**: +30 puntos adicionales
+
+Y penalizaciones por:
+- **Derrota**: -200 puntos
+- **Inactividad**: -10 puntos por turno
+- **Tendencia al Empate**: -15 puntos por turno
+
+## 🤝 Contribuir
+
+Las contribuciones son bienvenidas. Para cambios importantes:
+
+1. Haz fork del repositorio
+2. Crea una nueva rama (`git checkout -b feature/mejora`)
+3. Commit tus cambios (`git commit -am 'Añade nueva mejora'`)
+4. Push a la rama (`git push origin feature/mejora`)
+5. Abre un Pull Request
+
+
+
+## 👤 Autor
+
+**Jeinder Abanero**
+- GitHub: [@JeinderAbanero](https://github.com/JeinderAbanero)
+

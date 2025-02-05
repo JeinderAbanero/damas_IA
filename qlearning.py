@@ -4,12 +4,12 @@ import os
 from constantes import *
 
 class QLearningAgent:
-    def __init__(self, alpha=0.2, gamma=0.99, epsilon=0.3):  
+    def __init__(self, alpha=0.1, gamma=0.9, epsilon=0.2):  
         self.alpha = alpha  
         self.gamma = gamma  
         self.epsilon = epsilon  
         self.min_epsilon = 0.01  
-        self.epsilon_decay = 0.9995  
+        self.epsilon_decay = 0.9999  
         self.q_table = {}  
         self.victorias = 0
         self.derrotas = 0
